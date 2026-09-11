@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deliberately failing fixture</title>
+  <style>
+    body { margin: 0; background: #fff; color: #222; font: 18px sans-serif; }
+    main { width: 2400px; padding: 24px; }
+    button { color: #222; background: #fff; border: 1px solid #222; padding: 10px; }
+    button:focus, button:focus-visible { outline: none; box-shadow: none; }
+    #status { transition: opacity 2s; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Deliberately failing fixture</h1>
+    <button type="button" aria-label="First">First</button>
+    <button type="button" aria-label="Second">Second</button>
+    <button type="button"></button>
+    <p id="status" role="status">Motion is not reduced</p>
+  </main>
+</body>
+</html>

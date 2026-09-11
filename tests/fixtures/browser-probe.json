@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "findings": [
+    {
+      "severity": "blocking",
+      "rule": "visual.approval.missing",
+      "surface": "visual",
+      "evidence": "Cannot read human approval manifest: ENOENT: no such file or directory, open '/home/runner/work/etcha-harness/etcha-harness/tests/fixtures/baselines/approval.json'",
+      "action": "A human must review candidate images externally, copy accepted baselines, and sign their digests in the product-owned manifest. The harness never approves or updates baselines."
+    },
+    {
+      "severity": "blocking",
+      "rule": "browser.sandbox.unavailable",
+      "surface": "browser",
+      "evidence": "browserType.launch: Target page, context or browser has been closed\nBrowser logs:\nChromium sandboxing failed!\n================================\nTo avoid the sandboxing issue, do either of the following:\n  - (preferred): Configure your environment to support sandboxing\n  - (alternative): Launch Chromium without sandbox using 'chromiumSandbox: false' option\n================================\n\nCall log:\n  - <launching> /home/runner/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,BlockOriginHeaderModificationOnRedirect,Translate,AutoDeElevate,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --disable-updater-scheduler --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --user-data-dir=/home/runner/work/etcha-harness/etcha-harness/tests/fixtures/.artifacts/a215054d-0722-4fee-9536-c86f37b71c34/playwright_chromiumdev_profile-LxCv6H --remote-debugging-pipe --no-startup-window\n  - <launched> pid=24868\n  - [pid=24868][err] [0911/233246.216805:FATAL:content/browser/zygote_host/zygote_host_impl_linux.cc:129] No usable sandbox! If you are running on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md. Otherwise see https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md for more information on developing with the (older) SUID sandbox. If you want to live dangerously and need an immediate workaround, you can try using --no-sandbox.\n  - [pid=24868] <gracefully close start>\n  - [pid=24868] <kill>\n  - [pid=24868] <will force kill>\n  - [pid=24868] <process did exit: exitCode=null, signal=SIGTRAP>\n  - [pid=24868] starting temporary directories cleanup\n  - [pid=24868] finished temporary directories cleanup\n  - [pid=24868] <gracefully close end>\n",
+      "action": "Install Chromium and enable a supported non-root Chromium sandbox environment. This harness never disables the sandbox."
+    }
+  ],
+  "coverage": {
+    "axe": false,
+    "smoke": false,
+    "keyboard": false,
+    "focusVisible": false,
+    "responsive": false,
+    "reducedMotion": false,
+    "zoom": false,
+    "visual": false
+  },
+  "artifacts": "/home/runner/work/etcha-harness/etcha-harness/tests/fixtures/.artifacts/a215054d-0722-4fee-9536-c86f37b71c34"
+}

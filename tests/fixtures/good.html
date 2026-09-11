@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verification fixture</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #202020; background: #fff; font: 18px/1.5 sans-serif; }
+    main { max-width: 48rem; padding: 24px; }
+    button { padding: 12px 18px; background: #fff; color: #202020; border: 2px solid #202020; font: inherit; }
+    button:focus-visible { outline: 3px solid #005fcc; outline-offset: 3px; }
+    a { color: #00458a; display: inline-block; margin: 16px; }
+    a:focus-visible { outline: 3px solid #005fcc; outline-offset: 3px; }
+    #status { transition: opacity 1s; }
+    @media (prefers-reduced-motion: reduce) { #status { transition-duration: 0s; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Verification fixture</h1>
+    <p>A small local page with explicit interaction and motion expectations.</p>
+    <button type="button" id="add">Add item</button>
+    <a href="#details">Details</a>
+    <p id="status" role="status" aria-label="No items">No items</p>
+    <h2 id="details">Details</h2>
+    <p>Content remains readable at each approved viewport.</p>
+  </main>
+  <script>
+    document.querySelector('#add').addEventListener('click', () => {
+      document.querySelector('#status').textContent = 'Item added';
+      document.querySelector('#status').setAttribute('aria-label', 'Item added');
+    });
+  </script>
+</body>
+</html>
