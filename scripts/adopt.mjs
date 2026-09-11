@@ -112,7 +112,22 @@ async function payload(source) {
     }
   }
   for (const [from, to] of files) {
-    const content = await readRegular(path.join(source, from));
+    let content = await readRegular(path.join(source, from));
+    if (from === 'package.json') {
+      let metadata;
+      try {
+        metadata = JSON.parse(content.toString('utf8'));
+      } catch {
+        throw new Error('Invalid source package.json');
+      }
+      if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        throw new Error('Invalid source package.json');
+      }
+      content = Buffer.from(`${JSON.stringify({
+        ...metadata,
+        scripts: { verify: 'node scripts/verify.mjs' },
+      }, null, 2)}\n`);
+    }
     result.set(to, { content, mode: (await safePath(path.join(source, from))).mode & 0o777 });
   }
   return result;

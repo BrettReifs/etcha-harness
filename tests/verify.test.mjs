@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { browserChecks, groupFindings, loadConfig, runCommand, verify } from '../scripts/verify.mjs';
 
-const fixtures = fileURLToPath(new URL('./fixtures/', import.meta.url));
+const runtime = tmpdir();
 const script = fileURLToPath(new URL('../scripts/verify.mjs', import.meta.url));
 const successful = { command: [process.execPath, '-e', 'process.exit(0)'] };
 const report = (overrides = {}) => ({
@@ -15,7 +16,7 @@ const report = (overrides = {}) => ({
 const adapter = (output = report()) => ({ command: [process.execPath, '-e', `console.log(${JSON.stringify(JSON.stringify(output))})`, '--'] });
 
 async function workspace(t, config) {
-  const dir = path.join(fixtures, '.runs', randomUUID());
+  const dir = path.join(runtime, randomUUID());
   await mkdir(dir, { recursive: true });
   t.after(() => rm(dir, { recursive: true, force: true }));
   const configPath = path.join(dir, 'config.json');
@@ -83,6 +84,62 @@ test('missing native detector and missing adapter coverage cannot yield green', 
   assert.equal(result.ok, false);
   assert.ok(result.findings.blocking.some((item) => item.rule === 'detect.missing'));
   assert.equal(result.findings.blocking.filter((item) => item.rule === 'coverage.missing').length, 7);
+});
+
+test('native detector exit 2 means primary findings, not operational failure', async (t) => {
+  const native = [{ antipattern: 'fixture-rule', name: 'Fixture finding', description: 'Correct the fixture.',
+    severity: 'warning', category: 'fixture', file: 'view.html', line: 4 }];
+  const { configPath } = await workspace(t, {
+    version: 1, build: successful,
+    detect: { command: [process.execPath, '-e', `console.log(${JSON.stringify(JSON.stringify(native))}); process.exitCode = 2;`] },
+    browser: { adapter: adapter() },
+  });
+  const result = await verify(configPath);
+  assert.equal(result.ok, false);
+  assert.equal(result.findings.blocking.length, 1);
+  assert.equal(result.findings.blocking[0].rule, 'detect.fixture-rule');
+  assert.equal(result.findings.blocking[0].surface, 'view.html:4');
+  assert.equal(result.findings.blocking[0].action, 'Correct the fixture.');
+});
+
+test('native detector exit 1 remains an operational failure', async (t) => {
+  const { configPath } = await workspace(t, {
+    version: 1, build: successful,
+    detect: { command: [process.execPath, '-e', 'process.exit(1)'] },
+    browser: { adapter: adapter() },
+  });
+  const result = await verify(configPath);
+  assert.equal(result.findings.blocking[0].rule, 'detect.failed');
+  assert.equal(result.findings.blocking[0].evidence.exitCode, 1);
+});
+
+test('failed commands retain bounded diagnostics with common credential fields redacted', async (t) => {
+  const { configPath } = await workspace(t, {
+    version: 1,
+    build: { command: [process.execPath, '-e', "console.log('Build details: token=example-only'); console.error('Cannot compile fixture'); process.exit(1)"] },
+    detect: successful,
+    browser: { adapter: adapter() },
+  });
+  const evidence = (await verify(configPath)).findings.blocking[0].evidence;
+  assert.match(evidence.stdout, /Build details/);
+  assert.match(evidence.stdout, /\[REDACTED\]/);
+  assert.ok(!evidence.stdout.includes('example-only'));
+  assert.match(evidence.stderr, /Cannot compile fixture/);
+  assert.ok(evidence.stdout.length <= 4000 && evidence.stderr.length <= 4000);
+});
+
+test('successful build and detector diagnostics remain traceable in the report', async (t) => {
+  const { configPath } = await workspace(t, {
+    version: 1,
+    build: { command: [process.execPath, '-e', "console.log('Build complete')"] },
+    detect: { command: [process.execPath, '-e', "console.error('Detection complete')"] },
+    browser: { adapter: adapter() },
+  });
+  const result = await verify(configPath);
+  assert.equal(result.ok, true);
+  assert.match(result.commands.build.stdout, /Build complete/);
+  assert.match(result.commands.detect.stderr, /Detection complete/);
+  assert.equal(result.commands.build.exitCode, 0);
 });
 
 test('malformed adapter output and invalid command config fail closed', async (t) => {

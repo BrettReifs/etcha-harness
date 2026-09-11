@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
@@ -69,6 +70,11 @@ function validate(browser) {
   }
   if (browser.checkTimeoutMs !== undefined && !validTimeout(browser.checkTimeoutMs)) throw new Error('Invalid checkTimeoutMs.');
   if (browser.channel !== undefined && !['chrome', 'chromium'].includes(browser.channel)) throw new Error('channel must be chrome or chromium when specified.');
+  if (browser.zoom !== undefined && (!['unsupported', 'reflow-model'].includes(browser.zoom?.mode)
+    || (browser.zoom.mode === 'unsupported' && (typeof browser.zoom.reason !== 'string' || !browser.zoom.reason.trim()))
+    || (browser.zoom.approved !== undefined && typeof browser.zoom.approved !== 'boolean'))) {
+    throw new Error('zoom requires mode "reflow-model" with explicit approved: true, or mode "unsupported" with a reason.');
+  }
   for (const key of ['baselineDir', 'artifactsDir', 'approvalManifest']) {
     if (browser[key] !== undefined && (typeof browser[key] !== 'string' || !browser[key])) throw new Error(`${key} must be a nonempty path.`);
   }
@@ -82,13 +88,13 @@ async function startServer(spec, root, baseURL, onStarted) {
   });
   onStarted(child);
   let error;
-  let stderr = '';
+  let stderrBytes = 0;
   child.on('error', (value) => { error = value.message; });
-  child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-4000); });
+  child.stderr.on('data', (chunk) => { stderrBytes += chunk.length; });
   const deadline = Date.now() + (spec.timeoutMs ?? 15_000);
   try {
     while (Date.now() < deadline) {
-      if (error || child.exitCode !== null) throw new Error(error ?? `Server exited (${child.exitCode}): ${stderr}`);
+      if (error || child.exitCode !== null) throw new Error(error ?? `Server exited (${child.exitCode}); ${stderrBytes} stderr bytes withheld.`);
       try {
         const response = await fetch(baseURL, { signal: AbortSignal.timeout(500), redirect: 'manual' });
         await response.body?.cancel();
@@ -96,7 +102,7 @@ async function startServer(spec, root, baseURL, onStarted) {
       } catch { /* Retry until the bounded readiness deadline. */ }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error(`Server readiness timed out: ${stderr}`);
+    throw new Error(`Server readiness timed out; ${stderrBytes} stderr bytes withheld.`);
   } catch (error) {
     await stopServer(child);
     throw error;
@@ -154,12 +160,67 @@ async function focusEvidence(locator) {
   });
 }
 
+async function localContext(instance, baseURL, options = {}) {
+  const context = await instance.newContext({ ...options, serviceWorkers: 'block' });
+  await context.route('**/*', (route) => {
+    const url = new URL(route.request().url());
+    return url.origin === baseURL.origin || ['data:', 'blob:'].includes(url.protocol)
+      ? route.continue() : route.abort('blockedbyclient');
+  });
+  await context.routeWebSocket('**/*', (socket) => { socket.close(); });
+  return context;
+}
+
+async function checkReflow(instance, browser, baseURL, state, viewport, surfaceDir, findings) {
+  const modeledViewport = { width: Math.floor(viewport.width / 2), height: Math.floor(viewport.height / 2) };
+  const context = await localContext(instance, baseURL, { viewport: modeledViewport, deviceScaleFactor: 2 });
+  try {
+    const page = await context.newPage();
+    page.setDefaultTimeout(browser.checkTimeoutMs ?? 5000);
+    page.setDefaultNavigationTimeout(browser.checkTimeoutMs ?? 5000);
+    await openState(page, state, baseURL);
+    if (!state.smoke?.length) throw new Error('Explicit smoke expectations are required to check information at modeled 200% reflow.');
+    const metrics = await page.evaluate(() => ({
+      width: innerWidth, height: innerHeight, deviceScaleFactor: devicePixelRatio,
+      documentWidth: document.documentElement.scrollWidth, bodyWidth: document.body?.scrollWidth ?? 0,
+    }));
+    if (metrics.width !== modeledViewport.width || metrics.height !== modeledViewport.height || metrics.deviceScaleFactor !== 2) {
+      throw new Error('The browser did not apply the requested half-size CSS viewport and deviceScaleFactor 2.');
+    }
+    const surface = `${state.name}/desktop/200%-reflow-model`;
+    if (Math.max(metrics.documentWidth, metrics.bodyWidth) > metrics.width + 1) {
+      findings.push(blocking('zoom.reflow-overflow', surface, metrics, 'Remove horizontal overflow at the modeled 200% layout.'));
+    }
+    for (const target of [...state.smoke, ...(state.keyboard ?? [])]) {
+      const locator = targetFor(page, target);
+      const count = await locator.count();
+      const box = count === 1 ? await locator.boundingBox() : null;
+      if (count !== 1 || !box || !await locator.isVisible() || box.x < -1 || box.x + box.width > metrics.width + 1) {
+        findings.push(blocking('zoom.required-information', surface, { target, count, box },
+          'Keep the declared information and controls visible and horizontally reachable at modeled 200% reflow.'));
+      }
+    }
+    const image = path.join(surfaceDir, 'zoom-200-reflow-model.png');
+    const imageSha256 = digest(await page.screenshot({ path: image, fullPage: true, animations: 'disabled' }));
+    const evidence = {
+      mode: 'reflow-model', genuineBrowserZoom: false, originalViewport: viewport,
+      modeledViewport, metrics, image, imageSha256, requiredInformation: state.smoke,
+    };
+    await writeFile(path.join(surfaceDir, 'zoom-200-reflow-model.json'), JSON.stringify(evidence, null, 2), { flag: 'wx' });
+    findings.push(finding('advisory', 'zoom.reflow-model.evidence', surface, evidence,
+      'This is simulated CSS-viewport reflow, not genuine browser-UI zoom; human review is still needed.'));
+  } finally {
+    await context.close();
+  }
+}
+
 export async function runBrowser(configPath) {
   const findings = [];
   const coverage = Object.fromEntries(browserChecks.map((key) => [key, false]));
   let server;
   let instance;
   let interrupted = false;
+  let profileDirectory;
   const originalTmp = process.env.TMPDIR;
   const onSignal = () => { interrupted = true; terminate(server, 'SIGKILL'); void instance?.close(); };
   process.once('SIGTERM', onSignal);
@@ -177,8 +238,9 @@ export async function runBrowser(configPath) {
     }
     const runDir = path.join(artifactsRoot, randomUUID());
     await mkdir(runDir, { recursive: true });
-    // Keep Chromium socket paths short, local, and out of the host temporary directory.
-    process.env.TMPDIR = root;
+    // Keep socket paths short and temporary browser profiles outside the product.
+    profileDirectory = await mkdtemp(path.join(tmpdir(), 'etcha-browser-'));
+    process.env.TMPDIR = profileDirectory;
     const approval = await approvalFor(browser, root, absoluteConfig);
     if (approval.error) findings.push(blocking('visual.approval.missing', 'visual', approval.error,
       'A human must review candidate images externally, copy accepted baselines, and sign their digests in the product-owned manifest. The harness never approves or updates baselines.'));
@@ -192,24 +254,19 @@ export async function runBrowser(configPath) {
     catch (error) {
       findings.push(blocking('browser.sandbox.unavailable', 'browser', { error: error.message.split('\n')[0], channel: browser.channel ?? 'bundled headless shell' },
         'Install Chromium and enable a supported non-root Chromium sandbox environment. This harness never disables the sandbox.'));
-      return { schemaVersion: 1, findings, coverage, artifacts: runDir, browserVersion: instance.version() };
+      return { schemaVersion: 1, findings, coverage, artifacts: runDir };
     }
     const complete = Object.fromEntries(browserChecks.map((key) => [key, true]));
-    complete.zoom = false;
-    findings.push(blocking('zoom.unsupported', 'all states/viewports',
-      { requested: '200% browser UI zoom', reason: browser.zoom?.reason ?? 'Playwright headless Chromium has no supported browser-UI zoom API. Device scale, CSS zoom, and pinch zoom are not equivalent.' },
-      'Use a replaceable browser adapter with genuine 200% browser zoom evidence; this gap blocks acceptance.'));
+    const modelZoom = browser.zoom?.mode === 'reflow-model' && browser.zoom.approved === true;
+    complete.zoom = modelZoom;
+    if (!modelZoom) findings.push(blocking('zoom.unsupported', 'all states/viewports',
+      { requested: '200% layout coverage', reason: browser.zoom?.mode === 'reflow-model'
+        ? 'The reflow model requires explicit approved: true.' : browser.zoom?.reason ?? 'No zoom strategy is configured.' },
+      'Select zoom: {mode: "reflow-model", approved: true} for explicitly modeled reflow, or use a replacement adapter with genuine browser zoom evidence.'));
     findings.push(finding('advisory', 'focus.evidence.limit', 'keyboard',
       'Evidence checks :focus-visible and computed-style changes, plus focused screenshots; it does not prove contrast, unclipped appearance, or perceptual visibility.',
       'Human review must assess focus indicator visibility and contrast on the saved focused images.'));
-    const context = await instance.newContext({ serviceWorkers: 'block' });
-    // Prevent configured actions and page resources from reaching remote origins.
-    await context.route('**/*', (route) => {
-      const url = new URL(route.request().url());
-      return url.origin === baseURL.origin || ['data:', 'blob:'].includes(url.protocol)
-        ? route.continue() : route.abort('blockedbyclient');
-    });
-    await context.routeWebSocket('**/*', (socket) => { socket.close(); });
+    const context = await localContext(instance, baseURL);
     for (const state of browser.states) {
       for (const viewport of browser.viewports) {
         if (interrupted) throw new Error('Browser verification interrupted.');
@@ -234,6 +291,9 @@ export async function runBrowser(configPath) {
           findings.push(blocking('state.unavailable', surface, error.message, 'Make this named state reachable and its actions deterministic.'));
           await page.close();
           continue;
+        }
+        if (modelZoom && viewport.name === 'desktop') {
+          await check('zoom', () => checkReflow(instance, browser, baseURL, state, viewport, surfaceDir, findings));
         }
         await check('smoke', async () => {
           if (!state.smoke?.length) throw new Error('At least one explicit smoke role/name expectation is required.');
@@ -350,13 +410,15 @@ export async function runBrowser(configPath) {
     }
     Object.assign(coverage, complete);
     await context.close();
-    return { schemaVersion: 1, findings, coverage, artifacts: runDir };
+    return { schemaVersion: 1, findings, coverage, artifacts: runDir, browserVersion: instance.version() };
   } catch (error) {
     findings.push(blocking('browser.failed', 'browser', error.message, 'Correct browser configuration/startup and rerun all required coverage.'));
     return { schemaVersion: 1, findings, coverage };
   } finally {
     await instance?.close().catch(() => {});
     await stopServer(server);
+    // Playwright removes its uniquely named child directories; retain others if runs overlap.
+    if (profileDirectory) await rm(profileDirectory, { recursive: true, force: true }).catch(() => {});
     if (originalTmp === undefined) delete process.env.TMPDIR;
     else process.env.TMPDIR = originalTmp;
     process.removeListener('SIGTERM', onSignal);

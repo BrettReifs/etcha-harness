@@ -27,6 +27,24 @@ async function fixture(t) {
     skill, hook, '.impeccable/config.json', 'scripts/verify.mjs', 'scripts/browser.mjs',
     'scripts/setup-engine.mjs', 'package.json', 'package-lock.json', 'licenses/impeccable-LICENSE',
   ]) await put(source, name, `${name}\n`);
+  const metadata = {
+    name: 'fixture-harness', version: '1.0.0', type: 'module',
+    engines: { node: '>=22.18.0' },
+    dependencies: { 'fixture-runtime': '1.0.0' },
+    devDependencies: { 'fixture-development': '2.0.0' },
+    optionalDependencies: { 'fixture-optional': '3.0.0' },
+    scripts: {
+      test: 'node --test tests/*.test.mjs', check: 'node scripts/check.mjs',
+      adopt: 'node scripts/adopt.mjs', 'setup:engine': 'node scripts/setup-engine.mjs',
+      verify: 'node scripts/verify.mjs',
+    },
+  };
+  await put(source, 'package.json', JSON.stringify(metadata));
+  const { scripts, type, ...locked } = metadata;
+  await put(source, 'package-lock.json', JSON.stringify({
+    name: metadata.name, version: metadata.version, lockfileVersion: 3,
+    packages: { '': locked },
+  }));
   return { root, source, target };
 }
 
@@ -61,7 +79,8 @@ test('installs only explicit payload and preserves product files and unrelated h
   for (const name of preserved) {
     assert.equal(await readFile(path.join(target, name), 'utf8'), `product ${name}`);
   }
-  assert.equal(await readFile(path.join(target, '.etcha/harness/package.json'), 'utf8'), 'package.json\n');
+  assert.deepEqual(JSON.parse(await readFile(path.join(target, '.etcha/harness/package.json'))).scripts,
+    { verify: 'node scripts/verify.mjs' });
   assert.equal(await readFile(path.join(target, '.etcha/harness/scripts/verify.mjs'), 'utf8'), 'scripts/verify.mjs\n');
   assert.equal(await readFile(path.join(target, '.etcha/harness/scripts/setup-engine.mjs'), 'utf8'), 'scripts/setup-engine.mjs\n');
   assert.equal(await readFile(path.join(target, '.etcha/harness/licenses/impeccable-LICENSE'), 'utf8'), 'licenses/impeccable-LICENSE\n');
@@ -324,4 +343,47 @@ test('never installs, owns, or removes downloaded runtime binaries', async (t) =
   assert.equal((await adopt({ source, target })).changed, false);
   await adopt({ source, target, remove: true });
   assert.equal(await readFile(path.join(target, binary), 'utf8'), 'product runtime binary');
+});
+
+test('standalone package advertises only runnable scripts and preserves source metadata and lock', async (t) => {
+  const { root, source, target } = await fixture(t);
+  const productPackage = '{"name":"product","scripts":{"test":"product-test"}}\n';
+  await put(target, 'package.json', productPackage);
+  await put(source, 'scripts/verify.mjs', 'console.log("fixture verification passed");\n');
+  const original = await readFile(path.join(source, 'package.json'), 'utf8');
+  const sourceMetadata = JSON.parse(original);
+  const originalLock = await readFile(path.join(source, 'package-lock.json'), 'utf8');
+  await adopt({ source, target });
+  const runtime = path.join(target, '.etcha/harness');
+  const installed = await readFile(path.join(runtime, 'package.json'), 'utf8');
+  const metadata = JSON.parse(installed);
+  assert.deepEqual(metadata, { ...sourceMetadata, scripts: { verify: 'node scripts/verify.mjs' } });
+  const locked = JSON.parse(originalLock).packages[''];
+  for (const field of ['engines', 'dependencies', 'devDependencies', 'optionalDependencies']) {
+    assert.deepEqual(metadata[field], locked[field]);
+  }
+  assert.equal(await readFile(path.join(runtime, 'package-lock.json'), 'utf8'), originalLock);
+  assert.equal(await readFile(path.join(source, 'package.json'), 'utf8'), original);
+  assert.equal(await readFile(path.join(target, 'package.json'), 'utf8'), productPackage);
+  const output = await promisify(execFile)('npm', ['--prefix', runtime, 'run', '--silent', 'verify'], {
+    env: { ...process.env, npm_config_cache: path.join(root, 'npm-cache') },
+  });
+  assert.match(output.stdout, /fixture verification passed/);
+  const ownership = JSON.parse(await readFile(path.join(target, manifest), 'utf8'));
+  assert.equal(ownership.files['.etcha/harness/package.json'], digest(installed));
+  assert.equal((await adopt({ source, target })).changed, false);
+  sourceMetadata.scripts.test = 'node --test other-tests/*.test.mjs';
+  await put(source, 'package.json', JSON.stringify(sourceMetadata, null, 4));
+  assert.equal((await adopt({ source, target })).changed, false);
+  assert.equal(await readFile(path.join(runtime, 'package.json'), 'utf8'), installed);
+  assert.equal(await readFile(path.join(target, 'package.json'), 'utf8'), productPackage);
+});
+
+test('invalid source package metadata fails before any target writes', async (t) => {
+  const { source, target } = await fixture(t);
+  for (const invalid of ['not json', 'null', '[]']) {
+    await put(source, 'package.json', invalid);
+    await assert.rejects(adopt({ source, target }), /Invalid source package.json/);
+    assert.deepEqual(await snapshot(target), {});
+  }
 });

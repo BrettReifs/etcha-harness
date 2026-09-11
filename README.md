@@ -25,6 +25,7 @@ Tests cover adoption, command orchestration, and browser evidence.
 
 Pinned versions: Impeccable CLI **4.1.0**, engine **0.1.5**, skill **4.3.1**,
 Playwright **1.63.0**, and axe-core adapter **4.13.0**.
+That Playwright release selects Chromium **153.0.8010.12**, revision **1243**.
 The skill and hook came from the official project installer. Their native
 structure is unchanged. See `impeccable.lock.json` for file hashes and provenance.
 Downloaded engines and local caches are not committed.
@@ -62,6 +63,12 @@ package, browser, and official release downloads.
 
 A fresh cloud session and human baseline review cannot be proved by local
 self-tests. Verify both after merge. Integrate Ideas in a separate task.
+
+The workflow uses Ubuntu 22.04 with sandboxed Chromium. In this development
+session, Ubuntu 24.04 host policy rejected the downloaded Chromium sandbox;
+browser tests used the existing sandboxed system Chrome instead. No sandbox
+control was disabled. Product checks default to the pinned Playwright browser;
+they fail explicitly if its sandbox cannot start.
 
 ## Upstream and licenses
 

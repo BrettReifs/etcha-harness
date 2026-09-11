@@ -4,12 +4,16 @@ import { createServer } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runBrowser } from '../scripts/browser.mjs';
 import { runCommand } from '../scripts/verify.mjs';
 
 const fixtures = fileURLToPath(new URL('./fixtures/', import.meta.url));
+const root = fileURLToPath(new URL('../', import.meta.url));
+const runtime = tmpdir();
 const browserScript = fileURLToPath(new URL('../scripts/browser.mjs', import.meta.url));
+const verifyScript = fileURLToPath(new URL('../scripts/verify.mjs', import.meta.url));
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const template = JSON.parse(await readFile(path.join(fixtures, 'verify.config.json'), 'utf8'));
 const rules = (result) => result.findings.map((value) => value.rule);
@@ -24,12 +28,12 @@ async function freePort() {
 }
 
 async function setup(t, mutate = () => {}) {
-  const dir = path.join(fixtures, '.runs', randomUUID());
+  const dir = path.join(runtime, `etcha-browser-test-${randomUUID()}`);
   await mkdir(dir, { recursive: true });
   t.after(() => rm(dir, { recursive: true, force: true }));
   const config = structuredClone(template);
   const port = await freePort();
-  config.root = fixtures;
+  config.root = root;
   config.browser.baseURL = `http://127.0.0.1:${port}`;
   config.browser.start.command = [process.execPath, path.join(fixtures, 'server.mjs'), String(port)];
   config.browser.artifactsDir = path.join(dir, 'artifacts');
@@ -58,8 +62,16 @@ test('real browser: all approved viewports, human digest gate, exact baselines, 
   assert.equal(initial.coverage.focusVisible, true);
   assert.equal(initial.coverage.reducedMotion, true);
   assert.equal(initial.coverage.responsive, true);
-  assert.equal(initial.coverage.zoom, false);
-  assert.ok(rules(initial).includes('zoom.unsupported'));
+  assert.equal(initial.coverage.zoom, true);
+  const modeled = initial.findings.find((item) => item.rule === 'zoom.reflow-model.evidence').evidence;
+  assert.equal(modeled.genuineBrowserZoom, false);
+  assert.equal(modeled.metrics.width, 640);
+  assert.equal(modeled.metrics.height, 400);
+  assert.equal(modeled.metrics.deviceScaleFactor, 2);
+  assert.ok((await readFile(modeled.image)).length > 100);
+  const zoomAdvisory = initial.findings.find((item) => item.rule === 'zoom.reflow-model.evidence');
+  assert.equal(zoomAdvisory.severity, 'advisory');
+  assert.match(zoomAdvisory.action, /not genuine browser-UI zoom/);
   assert.ok(rules(initial).includes('visual.approval.missing'));
   assert.equal(initial.findings.filter((item) => item.rule === 'visual.baseline.missing').length, 3);
   assert.equal(initial.findings.filter((item) => item.rule.startsWith('axe.') && item.severity === 'blocking').length, 0);
@@ -85,7 +97,8 @@ test('real browser: all approved viewports, human digest gate, exact baselines, 
   const approved = await runBrowser(configPath);
   assert.deepEqual(approved.findings.filter((item) => item.rule.startsWith('visual.')), [], JSON.stringify(approved.findings));
   assert.equal(approved.coverage.visual, true);
-  assert.ok(rules(approved).includes('zoom.unsupported'), 'Approval cannot waive a missing zoom test.');
+  assert.equal(approved.coverage.zoom, true);
+  assert.deepEqual(approved.findings.filter((item) => item.severity === 'blocking'), [], JSON.stringify(approved.findings));
 
   const baseline = path.join(config.browser.baselineDir, 'home/desktop.png');
   await writeFile(baseline, 'tampered baseline');
@@ -95,6 +108,23 @@ test('real browser: all approved viewports, human digest gate, exact baselines, 
   assert.equal(mismatch.evidence.before, baseline);
   assert.ok(mismatch.evidence.after.includes('candidate.png'));
   assert.equal(await readFile(baseline, 'utf8'), 'tampered baseline');
+  manifest.configSha256 = '0'.repeat(64);
+  await writeFile(config.browser.approvalManifest, JSON.stringify(manifest));
+  const staleApproval = await runBrowser(configPath);
+  assert.ok(rules(staleApproval).includes('visual.approval.missing'), 'Approval is bound to the exact configuration digest.');
+});
+
+test('one command runs build, native detector and real browser, blocking missing visual approval', { timeout: 60_000 }, async (t) => {
+  const { configPath } = await setup(t);
+  const command = await runCommand([process.execPath, verifyScript, '--config', configPath], { timeoutMs: 50_000, maxOutput: 1_000_000 });
+  assert.equal(command.code, 1);
+  const report = JSON.parse(command.stdout);
+  assert.equal(report.ok, false);
+  assert.equal(report.coverage.axe, true);
+  assert.equal(report.coverage.zoom, true);
+  assert.ok(report.findings.blocking.some((item) => item.rule === 'visual.approval.missing'));
+  assert.ok(!report.findings.blocking.some((item) => /^(build|detect|browser)\./.test(item.rule)));
+  assert.ok(report.browser.artifacts);
 });
 
 test('real browser: deliberately bad page surfaces axe, focus, extra Tab, overflow and motion failures', { timeout: 60_000 }, async (t) => {
@@ -108,10 +138,11 @@ test('real browser: deliberately bad page surfaces axe, focus, extra Tab, overfl
   });
   const result = await runBrowser(configPath);
   for (const rule of ['axe.html-has-lang', 'axe.button-name', 'focus.indicator.missing', 'keyboard.unexpected-extra-stop',
-    'responsive.horizontal-overflow', 'motion.expected-style', 'smoke.expected-target']) {
+    'responsive.horizontal-overflow', 'motion.expected-style', 'smoke.expected-target', 'zoom.reflow-overflow', 'zoom.required-information']) {
     assert.ok(rules(result).includes(rule), `Expected ${rule}: ${JSON.stringify(result.findings)}`);
   }
   assert.equal(result.coverage.axe, true, 'Completed checks retain coverage even when they find a bug.');
+  assert.equal(result.coverage.zoom, true, 'The approved reflow model executed and reported its layout defects.');
 });
 
 test('real browser: actions establish a named state and keyboard starts before all its controls', { timeout: 60_000 }, async (t) => {
@@ -130,6 +161,7 @@ test('real browser: actions establish a named state and keyboard starts before a
 
 test('real browser: missing expectations and exact reordered roles fail coverage and tab order', { timeout: 60_000 }, async (t) => {
   const { configPath } = await setup(t, (config) => {
+    config.browser.zoom = { mode: 'unsupported', reason: 'Fixture intentionally exercises unsupported coverage.' };
     config.browser.states[0].keyboard.reverse();
     delete config.browser.states[0].smoke;
     delete config.browser.states[0].reducedMotion;
@@ -139,6 +171,18 @@ test('real browser: missing expectations and exact reordered roles fail coverage
   assert.equal(result.coverage.smoke, false);
   assert.equal(result.coverage.reducedMotion, false);
   assert.equal(result.coverage.focusVisible, false);
+  assert.ok(rules(result).includes('zoom.unsupported'));
+});
+
+test('reflow coverage requires explicit product approval; absent or unapproved strategies stay blocking', { timeout: 60_000 }, async (t) => {
+  for (const zoom of [undefined, { mode: 'reflow-model' }, { mode: 'reflow-model', approved: false }]) {
+    const { configPath } = await setup(t, (config) => { config.browser.zoom = zoom; });
+    const result = await runBrowser(configPath);
+    assert.equal(result.coverage.zoom, false);
+    assert.equal(result.coverage.smoke, true, 'Independent browser checks still run.');
+    assert.ok(rules(result).includes('zoom.unsupported'));
+    assert.ok(!rules(result).includes('zoom.reflow-model.evidence'));
+  }
 });
 
 test('browser rejects remote URLs, unapproved viewport coverage, and unsafe state names', async (t) => {
@@ -177,6 +221,23 @@ test('server readiness is bounded and its process is cleaned up', async (t) => {
   const result = await runBrowser(configPath);
   assert.ok(Date.now() - started < 5000);
   assert.ok(result.findings.some((item) => String(item.evidence).includes('readiness timed out')));
+  const pid = Number(await readFile(pidPath, 'utf8'));
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+});
+
+test('orchestrator timeout also cleans a server that is still starting', { timeout: 15_000 }, async (t) => {
+  let pidPath;
+  const { configPath } = await setup(t, (config) => {
+    pidPath = path.join(path.dirname(config.browser.approvalManifest), 'pending-server.pid');
+    config.browser.timeoutMs = 1500;
+    config.browser.start = {
+      command: [process.execPath, '-e', `require('node:fs').writeFileSync(${JSON.stringify(pidPath)}, String(process.pid)); setInterval(() => {}, 1000)`],
+      timeoutMs: 10_000,
+    };
+  });
+  const result = await runCommand([process.execPath, verifyScript, '--config', configPath], { timeoutMs: 10_000 });
+  assert.equal(result.code, 1);
+  assert.ok(JSON.parse(result.stdout).findings.blocking.some((item) => item.rule === 'browser.timeout'));
   const pid = Number(await readFile(pidPath, 'utf8'));
   assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
 });

@@ -12,3 +12,4 @@ Review changed hooks and dependencies before trusting an update.
 Run `npm ci`, `npm test`, and `npm run check` for harness changes. Browser tests
 require the pinned Playwright Chromium installation. Never approve new visual
 baselines automatically. Do not add credentials, cloud services, or telemetry.
+Do not enable optional hosted image generation during harness setup.
