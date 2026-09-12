@@ -102,6 +102,110 @@ site crawler.
   browser-UI zoom. A human must still check actual browser zoom. Without an
   approved model or a replacement adapter, zoom coverage remains blocking.
 
+  ### 3D reference evidence
+
+  The hero-morph reference example supplements browser UI checks with tests of
+  equipment state, mesh deformation, attachment positions, interrupted motion,
+  and the renderer's reduced-motion behavior. These are example-owned checks,
+  not new guarantees from the default browser adapter.
+
+  CSS expectations cannot establish that canvas animation stopped. axe-core
+  cannot inspect a mesh or its facial features. A settled screenshot cannot prove
+  smooth motion, and exact image bytes can vary across graphics drivers even
+  with the same browser. Use deterministic animation checkpoints for diagnosis,
+  then review motion and readability on target devices. Keep candidate images
+  separate from human-approved baselines. Do not label an untested device,
+  performance budget, or assistive-technology path as passing.
+
+## Recover safely before visual review
+
+For an interrupted session, inspect the saved commit and working tree first.
+Separate completed checks from checks that were skipped or lost. A recovery
+commit is not proof that verification passed.
+
+1. Finish screenshot generation and wait for the test process to exit. Do not
+   inspect files while a test runner or another agent can overwrite or clean them.
+2. Keep each capture run in a separate directory. The hero-morph Playwright
+   config creates `test-results/run-UUID/` under the example, with candidate
+   screenshots and a native `results.json` report. New runs do not clean older
+   run directories. Do not override the output directory with a shared path.
+   Leave `ETCHA_HERO_EVIDENCE_RUN` unset when starting a run; the config assigns
+   it for that run's child processes. Reusing an ID can overwrite its evidence.
+3. Before opening images, scan changed files for secrets and commit the work.
+   Record the commit, commands, outcomes, evidence paths, and remaining checks
+   in the task progress report. Keep generated evidence out of source commits.
+   These ignored files last only as long as the workspace; use approved artifact
+   storage when evidence must survive a fresh session, or recapture in a new run.
+4. Keep cloud recovery text-only: do not open screenshots with an image-reading
+   tool or return image attachments from browser tools or subagents. Continue
+   automated tests and capture images to files. Read the text results instead.
+   This isolates the suspected failing handoff; it does not repair the runtime.
+5. Hand candidate images to a human reviewer outside the failing cloud session.
+   Keep the completed run unchanged until review ends. Clean old runs only after
+   their evidence is no longer needed, with no active readers or writers.
+6. Report **visual review incomplete** until the required review is complete.
+   Automated checks may still pass, but do not claim visual acceptance, create
+   an approval record, or approve baselines on that basis.
+
+Unique paths and individual reads are recovery precautions, not a proven fix
+for an upstream file-download failure. Both were in use when the second incident
+occurred. Do not retry image reads repeatedly in the recovery session.
+
+### Downloadable hero evidence
+
+The `Hero evidence` workflow runs the existing example build, unit tests, and
+browser tests on relevant pull requests, or by manual dispatch once the workflow
+is available on the default branch. It uses the pinned Playwright Chromium.
+It does not send images to Copilot or approve baselines.
+
+Open the workflow run in GitHub Actions and download
+`hero-evidence-RUN_ID-RUN_ATTEMPT` from **Artifacts**. The archive contains the
+per-run `results.json`, candidate PNGs, and failure traces when produced. The
+job summary records the tested commit and check outcomes. Check the JSON report
+and job outcome: an archive can contain partial evidence from a failed test.
+If checks failed before producing evidence, there may be no archive.
+
+Evidence is retained for 14 days. Download it before expiry, or rerun the workflow
+to capture new evidence tied to a new run. Use only synthetic example data;
+screenshots and traces can contain page content. Human reviewers should inspect
+the downloaded images and review motion locally on the target devices. A green
+workflow is not visual approval. Repository policy may require a maintainer to
+approve the workflow before it runs; do not bypass that approval.
+
+### Separate-session image capability probe
+
+Only run this diagnostic in a fresh, disposable cloud session with no unfinished
+implementation work. Use one small, known-good, non-sensitive image from a
+completed capture. Confirm that the file exists and decodes locally, then ask
+the agent to inspect it once and return a text description. Success requires
+the next model response to finish, not merely a successful image-read tool call.
+
+The probe itself may terminate the session. If it fails, stop image-based cloud
+review and retain the run URL and request ID. If it passes, it establishes only
+that this handoff worked once; it is not a guarantee against recurrence. Local
+browser tests and file-existence checks cannot test Copilot's upstream download.
+Do not embed this probe in application CI or a recovery run.
+
+### Upstream support handoff
+
+These two runs failed with
+`CAPIError: 400 Error while downloading file. Upstream status code: 404.`:
+
+| Run | Failure time (UTC) | Request ID | Preceding operation |
+| --- | --- | --- | --- |
+| [34669844938](https://github.com/BrettReifs/etcha-harness/actions/runs/34669844938) | 2026-09-12 03:24:07 | `3009:D79A8:23DBD6:371174:6AA4C5D6` | Four candidate image reads reported success before the next model request failed. |
+| [34670544421](https://github.com/BrettReifs/etcha-harness/actions/runs/34670544421) | 2026-09-12 03:39:39 | `6046:3C7804:5D0AC6:71FF57:6AA4C97A` | One candidate image read from a unique run directory reported success before the next model request failed. |
+
+Send GitHub Support these run links, timestamps, request IDs, and the affected
+evidence path from the logs. Include any separate probe result. Ask them to trace
+the image/file handoff and explain the upstream 404. Review attachments for
+sensitive data before sharing them. This handoff is not a submitted support case.
+
+The repeated sequence points to the image/file handoff, but the logs do not
+prove why the upstream file was unavailable. The Linux package name in the stack
+trace does not establish a Linux fault. Do not weaken firewall rules, browser
+sandboxing, or approval checks, or change dependencies based only on this error.
+
 ## Human baseline record
 
 Candidate images are under a unique run directory, then

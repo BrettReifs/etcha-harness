@@ -49,6 +49,29 @@ npm run verify -- --config /absolute/path/to/product/etcha.verify.json
 Missing checks and unapproved visual changes are blockers. A clean detector or
 accessibility scan is evidence, not human design approval.
 
+## Reference prototype: hero morph
+
+The isolated [hero-morph example](examples/hero-morph/index.html) tests one
+equipment-driven 3D transformation: equip a colorful badge on a white,
+cel-shaded hero, then remove it to restore the base shape. This is the first
+reference milestone, not a complete game or a default Etcha design.
+
+From this checkout, install and launch the example separately:
+
+```sh
+npm ci --prefix /home/runner/work/etcha-harness/etcha-harness/examples/hero-morph
+npm run dev --prefix /home/runner/work/etcha-harness/etcha-harness/examples/hero-morph -- --host 127.0.0.1
+```
+
+Replace the absolute checkout path if using another machine. The example owns
+its renderer, dependencies, character assets, and local contracts. Adoption does
+not copy or install any of them. See [context boundaries](docs/context-layers.md)
+and [3D evidence limits](docs/design-review.md#3d-reference-evidence).
+
+The title-screen flow, saved inventory, combination discovery, and a broader
+asset library remain later milestones. Review asset rights before reuse outside
+this repository; no new redistribution license is granted by this example.
+
 ## Cloud setup and trust
 
 The committed `copilot-setup-steps` workflow installs the same pinned tools and

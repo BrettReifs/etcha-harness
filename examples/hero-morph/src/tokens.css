@@ -1,0 +1,14 @@
+:root {
+  color-scheme: light;
+  --paper: #f6f2e9;
+  --wash: #ece7da;
+  --white: #fffef6;
+  --ink: #342939;
+  --ink-hover: #514057;
+  --muted: #716376;
+  --leaf: #426936;
+  --line: #d5cec9;
+  --floor-line: #c9bfb6;
+  --sans: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+  --serif: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+}

@@ -102,6 +102,32 @@ test('first-run conflicts preflight all changes, including identical unowned con
   }
 });
 
+test('reference examples, assets, and their dependencies stay outside adoption', async (t) => {
+  const { source, target } = await fixture(t);
+  const examples = [
+    'examples/hero-morph/package.json',
+    'examples/hero-morph/package-lock.json',
+    'examples/hero-morph/src/hero.ts',
+    'examples/hero-morph/public/assets/manifest.json',
+  ];
+  for (const name of examples) await put(source, name, 'reference example');
+  const localAsset = 'examples/product-owned/hero.svg';
+  await put(target, localAsset, 'product-owned asset');
+  await adopt({ source, target });
+  for (const name of examples) {
+    await assert.rejects(readFile(path.join(target, name)), { code: 'ENOENT' });
+    await assert.rejects(readFile(path.join(target, '.etcha/harness', name)), { code: 'ENOENT' });
+  }
+  const owned = JSON.parse(await readFile(path.join(target, manifest), 'utf8'));
+  assert(!Object.keys(owned.files).some((name) => name.includes('examples/')));
+  const metadata = JSON.parse(await readFile(path.join(target, '.etcha/harness/package.json'), 'utf8'));
+  assert.deepEqual(metadata.dependencies, { 'fixture-runtime': '1.0.0' });
+  for (const name of examples) await put(source, name, 'updated reference example');
+  assert.equal((await adopt({ source, target })).changed, false);
+  await adopt({ source, target, remove: true });
+  assert.equal(await readFile(path.join(target, localAsset), 'utf8'), 'product-owned asset');
+});
+
 test('repeat adoption is idempotent and applies additions, updates, and removed payload files', async (t) => {
   const { source, target } = await fixture(t);
   await put(source, '.github/skills/impeccable/obsolete.md', 'old');

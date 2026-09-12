@@ -25,3 +25,15 @@ available. A local file or digest cannot prove human identity.
 Automated accessibility scans do not prove keyboard usability, focus visibility,
 or design quality. Inspect browser evidence and complete the product's manual
 checks. Record any untested browser, state, or assistive technology.
+
+## Interrupted image review
+
+Finish capture before opening images. Use separate run directories and keep
+completed captures unchanged while they are under review. Do not run cleanup or
+capture jobs against evidence another agent is reading.
+
+Before image inspection, checkpoint secret-scanned changes and record commands,
+results, evidence paths, and pending checks in the task progress report. Read
+images individually when recovering from a failed handoff. If inspection fails,
+report visual review incomplete; do not approve baselines or claim acceptance.
+Keep the run URL and exact error/request ID for support if the failure repeats.

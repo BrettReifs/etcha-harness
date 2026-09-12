@@ -30,6 +30,10 @@ It never edits `PRODUCT.md`, `DESIGN.md`, `AGENTS.md`, the product's package fil
 or unrelated skills and hooks. Existing destination files are conflicts, even
 if their bytes match. All conflicts are checked before writes.
 
+Reference prototypes under `examples/` are not adoption payloads. Their assets,
+dependencies, and product contracts remain opt-in examples. Installing the
+harness does not install a 3D renderer or change a product's visual identity.
+
 The `.etcha/manifest.json` ownership record stores file hashes and modes.
 Keep it with the integration. A second run with no changes makes no writes.
 Executable launcher permissions are preserved and repaired when needed.

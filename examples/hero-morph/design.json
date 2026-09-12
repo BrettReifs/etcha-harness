@@ -1,0 +1,14 @@
+{
+  "surface": "Fitting room",
+  "mode": "Experience",
+  "approval": "User repeatedly approved the bounded direction and instructed Proceed; no new interview or concept round.",
+  "buildPath": "code-led",
+  "firstViewport": "Warm pale editorial scene; inky plum title at left, a dominant sculptural white wisp at right, one small Seed equipment area. On mobile the character comes before equipment.",
+  "signature": "The Seed badge causes the same mesh topology to unfurl into a taller, broader leaf-wisp and reverse smoothly when removed.",
+  "motion": "One 850 ms smoothstep morph, proportional remaining distance after interruption. No idle loop. OS reduced motion snaps actual geometry and attachments immediately; hidden/offscreen transitions settle without rendering.",
+  "tokens": "src/tokens.css",
+  "typography": "Local system serif display and system sans controls. Offline scope intentionally excludes hosted fonts.",
+  "qualityBar": ["Character dominates, not a dashboard or card grid", "Warm matte sculptural material", "Readable and keyboard-accessible controls", "Honest loading and graphics-failure states", "No layout overflow on narrow screens"],
+  "verification": "Node unit tests, TypeScript build, root-pinned Playwright Chromium and axe. Browser tests inspect renderer geometry and frames rather than treating CSS-only reduced-motion checks as GPU evidence.",
+  "approvalBoundary": "Screenshots in ignored test-results are unapproved candidates. Physical device GPU variation and manual assistive technology checks remain unverified."
+}

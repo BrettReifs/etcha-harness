@@ -15,3 +15,21 @@ fixture is not a recommended product identity.
 Impeccable supplies discovery, design documentation, critique, live iteration,
 and detectors. Etcha adds context boundaries, a bounded brief, common evidence
 reporting, verification adapters, and safe adoption. It does not fork the skill.
+
+## Reference prototypes
+
+An isolated reference prototype may live under `examples/` to test these
+boundaries. It acts as an adopter, not as part of the harness runtime. Its
+dependencies, product facts, visual rules, assets, and domain logic remain in
+the example. Normal adoption must not copy them or install their dependencies.
+
+The hero-morph example explores one reversible equipment-driven transformation.
+Its white cel-shaded character and badge are sample content, not Etcha's visual
+identity. Its local JSON contracts describe the prototype; they do not replace
+Impeccable's native product/design documents or change context discovery.
+
+Extract a shared capability only after a second example demonstrates reuse
+without depending on the first example's character or game rules. Each asset
+needs source, provenance, rights, compatibility constraints, and evidence before
+it can become a library entry. Inclusion here does not grant redistribution
+rights; the repository's licensing limits still apply.
