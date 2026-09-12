@@ -117,6 +117,43 @@ site crawler.
   separate from human-approved baselines. Do not label an untested device,
   performance budget, or assistive-technology path as passing.
 
+## Recover safely before visual review
+
+For an interrupted session, inspect the saved commit and working tree first.
+Separate completed checks from checks that were skipped or lost. A recovery
+commit is not proof that verification passed.
+
+1. Finish screenshot generation and wait for the test process to exit. Do not
+   inspect files while a test runner or another agent can overwrite or clean them.
+2. Keep each capture run in a separate directory. The hero-morph Playwright
+   config creates `test-results/run-UUID/` under the example, with candidate
+   screenshots and a native `results.json` report. New runs do not clean older
+   run directories. Do not override the output directory with a shared path.
+   Leave `ETCHA_HERO_EVIDENCE_RUN` unset when starting a run; the config assigns
+   it for that run's child processes. Reusing an ID can overwrite its evidence.
+3. Before opening images, scan changed files for secrets and commit the work.
+   Record the commit, commands, outcomes, evidence paths, and remaining checks
+   in the task progress report. Keep generated evidence out of source commits.
+   These ignored files last only as long as the workspace; use approved artifact
+   storage when evidence must survive a fresh session, or recapture in a new run.
+4. Read candidate images individually on recovery. Keep the completed run
+   unchanged until review ends. Clean old runs only after their evidence is no
+   longer needed, with no active readers or writers.
+5. If image inspection fails, report **visual review incomplete**. Automated
+   checks may still pass, but do not claim visual acceptance, create an approval
+   record, or approve baselines. Resume from the checkpoint in a new session.
+
+Unique paths and individual reads are recovery precautions, not a proven fix
+for an upstream file-download failure. If it repeats, give GitHub Support the
+new run URL, timestamp, exact error, request ID, and the affected evidence path.
+The original incident is
+[run 34669844938](https://github.com/BrettReifs/etcha-harness/actions/runs/34669844938):
+`CAPIError: 400 Error while downloading file. Upstream status code: 404.`,
+request ID `3009:D79A8:23DBD6:371174:6AA4C5D6`.
+It occurred after screenshot reads; the logs do not prove why the upstream
+file was unavailable. Do not change firewall rules or dependencies based only
+on this error.
+
 ## Human baseline record
 
 Candidate images are under a unique run directory, then
