@@ -1,0 +1,63 @@
+name: Hero evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'examples/hero-morph/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/hero-evidence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.23.2'
+      - name: Install locked dependencies
+        run: |
+          npm ci
+          npm ci --prefix examples/hero-morph
+      - name: Install pinned Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Build example
+        id: build
+        run: npm run build --prefix examples/hero-morph
+      - name: Test example
+        id: unit
+        run: npm test --prefix examples/hero-morph
+      - name: Run browser checks and capture candidates
+        id: browser
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npm run test:browser --prefix examples/hero-morph
+      - name: Preserve candidate evidence
+        if: ${{ !cancelled() && (steps.browser.outcome == 'success' || steps.browser.outcome == 'failure') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hero-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: examples/hero-morph/test-results/run-*/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Report evidence boundary
+        if: ${{ always() }}
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          UNIT_OUTCOME: ${{ steps.unit.outcome }}
+          BROWSER_OUTCOME: ${{ steps.browser.outcome }}
+        run: |
+          {
+            printf '## Hero evidence\n\n'
+            printf 'Tested commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Build: %s; unit tests: %s; browser tests: %s.\n\n' "$BUILD_OUTCOME" "$UNIT_OUTCOME" "$BROWSER_OUTCOME"
+            printf 'Download candidate evidence from this run’s Artifacts section when available.\n\n'
+            printf '**Visual review incomplete.** Tests and artifact upload do not approve appearance or motion.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
