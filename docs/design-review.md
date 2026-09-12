@@ -102,6 +102,21 @@ site crawler.
   browser-UI zoom. A human must still check actual browser zoom. Without an
   approved model or a replacement adapter, zoom coverage remains blocking.
 
+  ### 3D reference evidence
+
+  The hero-morph reference example supplements browser UI checks with tests of
+  equipment state, mesh deformation, attachment positions, interrupted motion,
+  and the renderer's reduced-motion behavior. These are example-owned checks,
+  not new guarantees from the default browser adapter.
+
+  CSS expectations cannot establish that canvas animation stopped. axe-core
+  cannot inspect a mesh or its facial features. A settled screenshot cannot prove
+  smooth motion, and exact image bytes can vary across graphics drivers even
+  with the same browser. Use deterministic animation checkpoints for diagnosis,
+  then review motion and readability on target devices. Keep candidate images
+  separate from human-approved baselines. Do not label an untested device,
+  performance budget, or assistive-technology path as passing.
+
 ## Human baseline record
 
 Candidate images are under a unique run directory, then

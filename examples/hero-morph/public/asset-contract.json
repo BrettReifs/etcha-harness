@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "wisp-seed-v1",
+  "rights": {
+    "status": "UNLICENSED",
+    "source": "Original authored procedural meshes and SVG illustrations created for this example; no external asset sources.",
+    "notice": "Inherits the repository's UNLICENSED status. This manifest grants no license or additional rights."
+  },
+  "assets": [
+    { "id": "wisp-3d", "source": "../src/shape.ts", "factory": "../src/assets.ts#createHero", "type": "procedural indexed triangle meshes", "dependencies": ["three@0.186.0"] },
+    { "id": "seed-badge-3d", "source": "../src/assets.ts#createHero", "type": "procedural cylinder, sphere, and stem" },
+    { "id": "seed-icon", "source": "seed.svg", "type": "original SVG", "viewBox": [0, 0, 64, 64] },
+    { "id": "wisp-original-fallback", "source": "wisp-original.svg", "type": "original static SVG interpretation", "viewBox": [0, 0, 480, 560] },
+    { "id": "wisp-seed-fallback", "source": "wisp-seed.svg", "type": "original static SVG interpretation", "viewBox": [0, 0, 480, 560] }
+  ],
+  "coordinates": { "units": "arbitrary scene units", "up": "+Y", "front": "+Z", "origin": "ground beneath character", "nominalHeight": "3.69 units original; 4.33 units Seed; feet start near Y=0.16" },
+  "rig": {
+    "type": "parameterized surfaces, no skeleton",
+    "parts": ["head", "body", "leftArm", "rightArm", "leftFoot", "rightFoot"],
+    "topologyPerPart": { "rings": 36, "segments": 48, "vertices": 1813, "indexedTriangles": 3456 },
+    "notes": "Fixed order across both forms, duplicated seam vertices and degenerate pole triangles. Overlapping separate watertight-looking surfaces, not a single welded mesh. Shape vertices are interpolated in place and normals recomputed."
+  },
+  "morphs": { "range": [0, 1], "zero": "original wisp", "one": "Seed leaf-wisp", "deformation": "Head height/crown curl/width; torso width/height; arm attachment, reach and leaf-like profile; foot position. No whole-group scaling.", "transitionSource": "../src/state.ts" },
+  "attachments": {
+    "source": "../src/shape.ts#attachment",
+    "method": "Sample each original and target surface at a stable (v, angle), then linearly interpolate and offset +Z by 0.025 units.",
+    "leftEye": { "part": "head", "v": 0.53, "angleRadians": -0.29 },
+    "rightEye": { "part": "head", "v": 0.53, "angleRadians": 0.29 },
+    "mouth": { "part": "head", "v": 0.42, "angleRadians": 0 },
+    "badge": { "part": "body", "v": 0.65, "angleRadians": -0.38 },
+    "equipment": "One badge, visible immediately when selected. Removed immediately on unequip while body reverses."
+  },
+  "reuse": "Source references are relative to this manifest in the repository, not promised HTTP source endpoints in dist. Import the example package's ./state, ./shape or ./assets exports in a TypeScript-aware bundler; Three.js is required only for ./assets. This example is not a core harness dependency.",
+  "limitations": ["Front-view fitting-room pose only; no skeletal animation or gameplay rig", "No export pipeline or glTF assets", "No topology guarantee across future versions", "Fallback SVGs are interpretations, not identical GPU renders", "Not tested across physical GPU vendors or non-Chromium browsers", "No new license grant"]
+}

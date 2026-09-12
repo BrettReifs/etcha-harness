@@ -1,0 +1,10 @@
+{
+  "name": "Wisp fitting room",
+  "scope": "Approved first milestone; example-local product facts only.",
+  "purpose": "Try one badge on one humanoid wisp and see a reversible geometric transformation.",
+  "audience": "People exploring a small character customization prototype; future adopters studying reusable asset boundaries.",
+  "approved": ["One white wispy cel-shaded humanoid", "Expressive eyes and mouth", "One colorful Seed badge", "Taller and broader leaf-wisp form", "Accessible HTML equip and unequip controls"],
+  "excluded": ["Title menu", "Inventory", "Gameplay", "Persistence", "Themed combinations", "Additional badges", "Hosted services", "External fonts", "Telemetry"],
+  "future": "A reusable asset library and themed combinations are later milestones, not implemented here.",
+  "contracts": ["No changes to the root adoption payload", "Pure morph and equipment logic is independent of DOM and Three.js", "Actual geometry deformation, not character swaps or whole-group scaling", "Static illustrated forms remain usable without WebGL"]
+}
