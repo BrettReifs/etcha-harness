@@ -1,0 +1,12 @@
+{
+  "updateCheck": false,
+  "detector": {
+    "designSystem": {
+      "enabled": true
+    }
+  },
+  "hook": {
+    "enabled": true,
+    "quiet": false
+  }
+}

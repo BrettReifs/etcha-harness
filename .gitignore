@@ -1,0 +1,9 @@
+node_modules/
+.github/skills/impeccable/scripts/bin/
+.impeccable/config.local.json
+.impeccable/*.cache.json
+.impeccable/bin/
+.impeccable/live/
+test-results/
+playwright-report/
+.etcha/results/

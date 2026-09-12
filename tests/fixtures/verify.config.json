@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "root": "../..",
+  "build": { "command": ["node", "tests/fixtures/check.mjs", "build"], "timeoutMs": 10000 },
+  "detect": { "command": ["node", "tests/fixtures/check.mjs", "detect"], "timeoutMs": 10000 },
+  "browser": {
+    "baseURL": "http://127.0.0.1:4179",
+    "start": { "command": ["node", "tests/fixtures/server.mjs", "4179"], "timeoutMs": 10000 },
+    "timeoutMs": 120000,
+    "checkTimeoutMs": 5000,
+    "artifactsDir": ".etcha/results/fixture",
+    "baselineDir": "tests/fixtures/baselines",
+    "approvalManifest": "tests/fixtures/baselines/approval.json",
+    "zoom": { "mode": "reflow-model", "approved": true },
+    "viewports": [
+      { "name": "desktop", "width": 1280, "height": 800, "approved": true },
+      { "name": "tablet", "width": 768, "height": 1024, "approved": true },
+      { "name": "mobile", "width": 390, "height": 844, "approved": true }
+    ],
+    "states": [
+      {
+        "name": "home",
+        "path": "/",
+        "smoke": [{ "role": "heading", "name": "Verification fixture" }],
+        "keyboard": [{ "role": "button", "name": "Add item" }, { "role": "link", "name": "Details" }],
+        "reducedMotion": [{ "selector": "#status", "property": "transition-duration", "equals": "0s" }]
+      }
+    ]
+  }
+}
