@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { createConnection } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
@@ -83,6 +84,27 @@ function validate(browser) {
 
 async function startServer(spec, root, baseURL, onStarted) {
   if (!spec) return undefined;
+  const endpoint = new URL(baseURL);
+  await new Promise((resolve, reject) => {
+    const socket = createConnection({
+      host: endpoint.hostname.replace(/^\[|\]$/g, ''),
+      port: Number(endpoint.port || (endpoint.protocol === 'https:' ? 443 : 80)),
+    });
+    socket.setTimeout(1000);
+    socket.once('connect', () => {
+      socket.destroy();
+      reject(new Error('Configured server port is already in use; refusing to inspect an unrelated build.'));
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      reject(new Error('Could not establish that the configured server port is free.'));
+    });
+    socket.once('error', (error) => {
+      socket.destroy();
+      if (error.code === 'ECONNREFUSED') resolve();
+      else reject(error);
+    });
+  });
   const child = spawn(spec.command[0], spec.command.slice(1), {
     cwd: root, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'ignore', 'pipe'],
   });
@@ -221,7 +243,6 @@ export async function runBrowser(configPath) {
   let instance;
   let interrupted = false;
   let profileDirectory;
-  const originalTmp = process.env.TMPDIR;
   const onSignal = () => { interrupted = true; terminate(server, 'SIGKILL'); void instance?.close(); };
   process.once('SIGTERM', onSignal);
   process.once('SIGINT', onSignal);
@@ -240,7 +261,6 @@ export async function runBrowser(configPath) {
     await mkdir(runDir, { recursive: true });
     // Keep socket paths short and temporary browser profiles outside the product.
     profileDirectory = await mkdtemp(path.join(tmpdir(), 'etcha-browser-'));
-    process.env.TMPDIR = profileDirectory;
     const approval = await approvalFor(browser, root, absoluteConfig);
     if (approval.error) findings.push(blocking('visual.approval.missing', 'visual', approval.error,
       'A human must review candidate images externally, copy accepted baselines, and sign their digests in the product-owned manifest. The harness never approves or updates baselines.'));
@@ -248,6 +268,7 @@ export async function runBrowser(configPath) {
     try {
       instance = await chromium.launch({
         headless: true, chromiumSandbox: true, channel: browser.channel,
+        env: { ...process.env, TMPDIR: profileDirectory },
         ignoreDefaultArgs: ['--disable-ipc-flooding-protection', '--unsafely-disable-devtools-self-xss-warnings', '--enable-unsafe-swiftshader'],
       });
     }
@@ -266,15 +287,23 @@ export async function runBrowser(configPath) {
     findings.push(finding('advisory', 'focus.evidence.limit', 'keyboard',
       'Evidence checks :focus-visible and computed-style changes, plus focused screenshots; it does not prove contrast, unclipped appearance, or perceptual visibility.',
       'Human review must assess focus indicator visibility and contrast on the saved focused images.'));
-    const context = await localContext(instance, baseURL);
     for (const state of browser.states) {
       for (const viewport of browser.viewports) {
         if (interrupted) throw new Error('Browser verification interrupted.');
         const surface = surfaceFor(state, viewport);
-        const page = await context.newPage();
-        await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        page.setDefaultTimeout(browser.checkTimeoutMs ?? 5000);
-        page.setDefaultNavigationTimeout(browser.checkTimeoutMs ?? 5000);
+        let context;
+        let page;
+        const resetState = async (reduced = false) => {
+          await context?.close();
+          context = await localContext(instance, baseURL, {
+            viewport: { width: viewport.width, height: viewport.height },
+            reducedMotion: reduced ? 'reduce' : 'no-preference',
+          });
+          page = await context.newPage();
+          page.setDefaultTimeout(browser.checkTimeoutMs ?? 5000);
+          page.setDefaultNavigationTimeout(browser.checkTimeoutMs ?? 5000);
+          await openState(page, state, baseURL);
+        };
         const surfaceDir = path.join(runDir, state.name, viewport.name);
         await mkdir(surfaceDir, { recursive: true });
         const check = async (key, operation) => {
@@ -285,11 +314,11 @@ export async function runBrowser(configPath) {
           }
         };
         try {
-          await openState(page, state, baseURL);
+          await resetState();
         } catch (error) {
           for (const key of browserChecks) complete[key] = false;
           findings.push(blocking('state.unavailable', surface, error.message, 'Make this named state reachable and its actions deterministic.'));
-          await page.close();
+          await context?.close();
           continue;
         }
         if (modelZoom && viewport.name === 'desktop') {
@@ -352,7 +381,7 @@ export async function runBrowser(configPath) {
             throw new Error('An explicit complete keyboard role/name tab order is required.');
           }
           // Restore the state, then seed navigation before its first element; every tested focus is a real Tab.
-          await openState(page, state, baseURL);
+          await resetState();
           await page.evaluate(() => {
             const start = document.createElement('span');
             start.tabIndex = -1;
@@ -395,8 +424,7 @@ export async function runBrowser(configPath) {
         if (!complete.keyboard) complete.focusVisible = false;
         await check('reducedMotion', async () => {
           if (!state.reducedMotion?.length) throw new Error('Explicit reducedMotion CSS expectations are required.');
-          await page.emulateMedia({ reducedMotion: 'reduce' });
-          await openState(page, state, baseURL);
+          await resetState(true);
           for (const expected of state.reducedMotion) {
             const locator = page.locator(expected.selector);
             if (await locator.count() !== 1) throw new Error(`Reduced motion selector must match one element: ${expected.selector}`);
@@ -405,11 +433,10 @@ export async function runBrowser(configPath) {
               { ...expected, actual }, 'Honor the reduced-motion media preference with the configured computed style.'));
           }
         });
-        await page.close();
+        await context.close();
       }
     }
     Object.assign(coverage, complete);
-    await context.close();
     return { schemaVersion: 1, findings, coverage, artifacts: runDir, browserVersion: instance.version() };
   } catch (error) {
     findings.push(blocking('browser.failed', 'browser', error.message, 'Correct browser configuration/startup and rerun all required coverage.'));
@@ -419,8 +446,6 @@ export async function runBrowser(configPath) {
     await stopServer(server);
     // Playwright removes its uniquely named child directories; retain others if runs overlap.
     if (profileDirectory) await rm(profileDirectory, { recursive: true, force: true }).catch(() => {});
-    if (originalTmp === undefined) delete process.env.TMPDIR;
-    else process.env.TMPDIR = originalTmp;
     process.removeListener('SIGTERM', onSignal);
     process.removeListener('SIGINT', onSignal);
   }

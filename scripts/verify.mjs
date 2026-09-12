@@ -43,6 +43,7 @@ export function runCommand(command, { cwd, timeoutMs = 60_000, maxOutput = 64_00
     let outputTruncated = false;
     let spawnError;
     let killTimer;
+    let cancelled = false;
     const child = spawn(command[0], command.slice(1), {
       cwd, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -56,6 +57,16 @@ export function runCommand(command, { cwd, timeoutMs = 60_000, maxOutput = 64_00
     child.stdout.on('data', (chunk) => { stdout = collect(stdout, chunk); });
     child.stderr.on('data', (chunk) => { stderr = collect(stderr, chunk); });
     child.on('error', (error) => { spawnError = error.message; });
+    const cancel = () => {
+      if (cancelled) return;
+      cancelled = true;
+      clearTimeout(timer);
+      terminate(child);
+      clearTimeout(killTimer);
+      killTimer = setTimeout(() => terminate(child, 'SIGKILL'), 200);
+    };
+    process.on('SIGINT', cancel);
+    process.on('SIGTERM', cancel);
     const timer = setTimeout(() => {
       timedOut = true;
       terminate(child);
@@ -64,9 +75,11 @@ export function runCommand(command, { cwd, timeoutMs = 60_000, maxOutput = 64_00
     child.on('close', (code, signal) => {
       clearTimeout(timer);
       clearTimeout(killTimer);
+      process.off('SIGINT', cancel);
+      process.off('SIGTERM', cancel);
       // A command may exit while a descendant remains in its process group.
       terminate(child, 'SIGKILL');
-      resolve({ code, signal, stdout, stderr, timedOut, outputTruncated, error: spawnError });
+      resolve({ code, signal, stdout, stderr, timedOut, cancelled, outputTruncated, error: spawnError });
     });
   });
 }
@@ -83,7 +96,7 @@ function evidenceFor(result) {
     .replace(/((?:password|passwd|token|secret|api[_-]?key)\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi, '$1[REDACTED]')
     .replace(/\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '[REDACTED TOKEN]')
     .slice(-4000);
-  return { exitCode: result.code, signal: result.signal, timedOut: result.timedOut,
+  return { exitCode: result.code, signal: result.signal, timedOut: result.timedOut, cancelled: result.cancelled,
     error: result.error, outputBytes: Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr),
     stdout: safeOutput(result.stdout), stderr: safeOutput(result.stderr), outputTruncated: result.outputTruncated,
     evidenceTruncated: result.stdout.length > 4000 || result.stderr.length > 4000 };
@@ -138,6 +151,10 @@ export async function verify(configPath) {
     }
     const result = await runCommand(config[name].command, { cwd: root, timeoutMs: config[name].timeoutMs });
     commands[name] = evidenceFor(result);
+    if (result.cancelled) {
+      findings.push(blocking('verification.cancelled', name, evidenceFor(result), 'Verification was cancelled; rerun all required checks.'));
+      return { schemaVersion: 1, ok: false, findings: groupFindings(findings), commands };
+    }
     const nativeReport = name === 'detect' ? nativeDetectorFindings(result) : null;
     const nativeFindings = nativeReport ?? [];
     findings.push(...nativeFindings);
@@ -168,6 +185,10 @@ export async function verify(configPath) {
       findings.push(blocking('browser.adapter.invalid', 'browser', 'Invalid adapter command or timeoutMs.', 'Use an argv command and a timeout between 1 and 600000 ms.'));
     } else {
       const result = await runCommand([...command, '--config', loaded.configPath], { cwd: root, timeoutMs, maxOutput: 1_000_000 });
+      if (result.cancelled) {
+        findings.push(blocking('verification.cancelled', 'browser', evidenceFor(result), 'Verification was cancelled; rerun all required checks.'));
+        return { schemaVersion: 1, ok: false, findings: groupFindings(findings), commands, coverage };
+      }
       let report;
       try { report = JSON.parse(result.stdout); } catch { /* Invalid output is a blocking adapter contract failure. */ }
       if (!validateBrowserReport(report) || result.outputTruncated) {

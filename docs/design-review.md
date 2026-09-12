@@ -33,7 +33,7 @@ Adapt this example to the product's actual commands and UI:
   },
   "browser": {
     "baseURL": "http://127.0.0.1:4173",
-    "start": { "command": ["npm", "run", "preview", "--", "--port", "4173"], "timeoutMs": 20000 },
+    "start": { "command": ["npm", "run", "preview", "--", "--port", "4173", "--strictPort"], "timeoutMs": 20000 },
     "timeoutMs": 120000,
     "checkTimeoutMs": 5000,
     "artifactsDir": ".etcha/results",
@@ -71,7 +71,11 @@ Click, fill, and wait actions target an exact `role` and `name`; fill also needs
 credentials.
 
 Omit `browser.start` to use a server already running. Servers started by Etcha
-are stopped on completion or failure. The browser accepts only a loopback
+are stopped on completion, failure, or cancellation. Their configured port must
+be free before startup. Configure the server to fail rather than choose another
+port, and avoid concurrent processes claiming that port during startup.
+Each surface and action replay starts in a fresh browser context; persistent
+storage is not inherited from the previous check. The browser accepts only a loopback
 base URL. Remote resources and WebSockets are blocked; serve needed assets
 locally. The default adapter is intentionally not an authenticated production
 site crawler.

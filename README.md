@@ -69,6 +69,7 @@ session, Ubuntu 24.04 host policy rejected the downloaded Chromium sandbox;
 browser tests used the existing sandboxed system Chrome instead. No sandbox
 control was disabled. Product checks default to the pinned Playwright browser;
 they fail explicitly if its sandbox cannot start.
+On that host, use `ETCHA_TEST_BROWSER_CHANNEL=chrome npm test` for the test suite.
 
 ## Upstream and licenses
 

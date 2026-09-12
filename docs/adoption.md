@@ -114,3 +114,24 @@ Run adoption with exclusive access to the target worktree. Preflight prevents
 known conflicts, not concurrent hostile file changes or power-loss rollback.
 Review the ownership manifest like code. It is not a security boundary against
 someone who can already edit the repository.
+
+## Native security scan review
+
+CodeQL reported five alerts in the unchanged native
+`.github/skills/impeccable/scripts/live-browser.js` payload:
+
+| Alerts | Review and trust boundary |
+| --- | --- |
+| Two unencrypted script loads, lines 7935 and 11688 | Both URLs use `http://localhost:PORT`, for the local helper's screenshot and detector scripts. The pinned engine binds its helper to `127.0.0.1`, not a public interface. |
+| Three insecure-randomness flows, lines 7396, 7793, and 7878 | These identify browser generation/recovery sessions. They are not the server authentication token. `sendEvent` attaches the separate `TOKEN`; the engine checks that token for state-changing events. |
+
+These are retained upstream scan findings, not a clean scan. No exploitable
+issue was confirmed within the trusted local-helper boundary. Do not expose or
+forward the helper port to an untrusted network. Treat other processes on the
+development machine as part of that trust boundary.
+
+The source evidence is the pinned engine's
+[live server](https://github.com/pbakaus/impeccable/blob/engine-v0.1.5/crates/live/src/live_server.rs)
+and the committed browser script's `sendEvent` at lines 7354–7370.
+Reassess the findings when updating the native payload. They were not suppressed
+or patched merely to obtain a clean scan.
