@@ -68,8 +68,12 @@ test('microphone denial explains the typed fallback', async ({ page }) => {
   await page.evaluate(() => {
     Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: () => Promise.reject(new DOMException('Denied', 'NotAllowedError')) })
   })
+  await page.getByRole('button', { name: 'Record audio' }).click()
+  await expect(page.locator('#status')).toContainText('type your transcript')
+  await expect(page.getByRole('button', { name: 'Record audio' })).toBeVisible()
+})
 
-  test('explicit audio stop releases tracks and preserves audio without inventing a transcript', async ({ page }) => {
+test('explicit audio stop releases tracks and preserves audio without inventing a transcript', async ({ page }) => {
     await draw(page)
     await page.evaluate(() => {
       let released = 0
@@ -105,10 +109,6 @@ test('microphone denial explains the typed fallback', async ({ page }) => {
     await expect(page.locator('audio')).toHaveAttribute('src', /^data:audio\/webm;codecs=opus;base64,/)
     await expect(page.getByRole('textbox', { name: 'Audio transcript' })).toHaveValue('Make that pulse')
   })
-  await page.getByRole('button', { name: 'Record audio' }).click()
-  await expect(page.locator('#status')).toContainText('type your transcript')
-  await expect(page.getByRole('button', { name: 'Record audio' })).toBeVisible()
-})
 
 test('approved workflows can be saved, edited, reloaded, reused and deleted', async ({ page }) => {
   await draw(page)
