@@ -109,6 +109,10 @@ test('reference examples, assets, and their dependencies stay outside adoption',
     'examples/hero-morph/package-lock.json',
     'examples/hero-morph/src/hero.ts',
     'examples/hero-morph/public/assets/manifest.json',
+    'examples/agentic-canvas/package.json',
+    'examples/agentic-canvas/package-lock.json',
+    'examples/agentic-canvas/PRODUCT.md',
+    'examples/agentic-canvas/src/core.ts',
   ];
   for (const name of examples) await put(source, name, 'reference example');
   const localAsset = 'examples/product-owned/hero.svg';

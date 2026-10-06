@@ -72,6 +72,13 @@ The title-screen flow, saved inventory, combination discovery, and a broader
 asset library remain later milestones. Review asset rights before reuse outside
 this repository; no new redistribution license is granted by this example.
 
+## Reference app: agentic canvas
+
+The isolated [agentic-canvas example](examples/agentic-canvas/README.md) provides
+a credential-free canvas demo and opt-in local Jev / Copilot SDK adapters.
+Its product contracts, dependencies, and live integrations stay in the example.
+Harness adoption and setup do not install or run it.
+
 ## Cloud setup and trust
 
 The committed `copilot-setup-steps` workflow installs the same pinned tools and
