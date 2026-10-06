@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import {
-  authorizeCommand, CanvasEventSchema, CanvasSnapshotSchema, offlineDecision, ToolCommandSchema,
+  authorizeCommand, CanvasEventSchema, CanvasSnapshotSchema, offlineDecision, resolveTarget, ToolCommandSchema,
 } from '../core.ts';
 import type { CanvasEvent, CanvasSnapshot, Capability, Decision, ToolCommand } from '../core.ts';
 import { CANVAS_TOOLS, runCopilot } from './copilot.ts';
@@ -23,7 +23,7 @@ export const runRequestSchema = z.object({
 export type LiveRunRequest = z.infer<typeof runRequestSchema>;
 export type LiveMessage =
   | { type: 'delta'; text: string }
-  | { type: 'result'; decision: unknown; commands?: ToolCommand[] }
+  | { type: 'result'; decision: unknown }
   | { type: 'error'; message: string };
 export type LiveRunner = (request: LiveRunRequest, signal: AbortSignal, emit: (message: LiveMessage) => void) => Promise<unknown>;
 
@@ -39,16 +39,23 @@ export interface OptionalProviders {
 }
 
 export function textContext(event: CanvasEvent, snapshot: CanvasSnapshot) {
+  const source = snapshot.objects.find(object => object.id === event.objectId);
+  const target = resolveTarget(snapshot, {
+    excludeId: source?.kind === 'note' || source?.kind === 'audio' ? source.id : undefined,
+  });
+  const relevantIds = new Set([
+    event.objectId, ...snapshot.selectedIds.slice(0, 8), snapshot.recentId,
+    ...(target.type === 'resolved' ? [target.objectId] : []),
+  ]);
   return {
     event,
     capabilities: { imageGeneration: 'unavailable', visualPerception: 'unavailable' },
-    objects: snapshot.objects.map(({ id, kind, x, y, text, points }) => ({
+    objects: snapshot.objects.filter(object => relevantIds.has(object.id)).slice(0, 10).map(({ id, kind, x, y, text, points }) => ({
       id, kind, x, y, text,
       ...(points ? { strokePointCount: points.length, description: 'A drawn stroke; shape has not been recognized.' } : {}),
     })),
-    selectedIds: snapshot.selectedIds,
+    selectedIds: snapshot.selectedIds.slice(0, 8),
     recentId: snapshot.recentId,
-    workflows: snapshot.workflows,
   };
 }
 
@@ -113,9 +120,15 @@ export function createLiveRunner(): LiveRunner {
     if (event.origin !== 'user') return { type: 'no_action', reason: 'Agent-origin events do not trigger live agents.' };
     if (request.mode !== 'copilot') throw new Error('Jev is not configured.');
     const canvas = makeCanvasGate(event, snapshot, signal);
+    let provisionalLabelSent = false;
     await runCopilot({
       context: textContext(event, snapshot), gate: canvas.gate, signal,
-      onDelta: text => emit({ type: 'delta', text }), model: process.env.COPILOT_MODEL,
+      onDelta: text => {
+        const label = provisionalLabelSent ? '' : 'Provisional live draft — untrusted, no action applied: ';
+        provisionalLabelSent = true;
+        emit({ type: 'delta', text: label + text });
+      },
+      model: process.env.COPILOT_MODEL,
     });
     return canvas.decision();
   };

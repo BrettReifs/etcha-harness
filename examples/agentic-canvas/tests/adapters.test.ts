@@ -217,10 +217,13 @@ test('live gate checks schema, source target, independent intent and opt-in unav
 });
 
 test('live perception context contains text JSON, no raw stroke points', () => {
-  const context = textContext(gateEvent, gateSnapshot);
+  const unrelated = { id: '10000000-0000-4000-8000-000000000099', kind: 'note' as const, x: 99, y: 99, text: 'private unrelated note' };
+  const context = textContext(gateEvent, { ...gateSnapshot, objects: [...gateSnapshot.objects, unrelated] });
   assert.equal('points' in context.objects[1]!, false);
   assert.equal(context.objects[1]!.strokePointCount, 2);
   assert.equal(JSON.stringify(context).includes('base64'), false);
+  assert.equal(JSON.stringify(context).includes('private unrelated note'), false);
+  assert.equal('workflows' in context, false);
 });
 
 test('browser SSE disconnect aborts the live provider signal', async () => {
